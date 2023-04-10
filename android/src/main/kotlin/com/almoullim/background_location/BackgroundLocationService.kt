@@ -18,11 +18,13 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.PluginRegistry
+import io.flutter.plugin.common.EventChannel
 
-
-class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry.RequestPermissionsResultListener {
+class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry.RequestPermissionsResultListener, EventChannel.StreamHandler {
     companion object {
         const val METHOD_CHANNEL_NAME = "${BackgroundLocationPlugin.PLUGIN_ID}/methods"
+        const val EVENT_CHANNEL_NAME  = "${BackgroundLocationPlugin.PLUGIN_ID}/events"
+
         private const val REQUEST_PERMISSIONS_REQUEST_CODE = 34
 
         private var instance: BackgroundLocationService? = null
@@ -50,6 +52,8 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
     private var isAttached = false
     private var receiver: MyReceiver? = null
     private var service: LocationUpdatesService? = null
+    private var eventSink: EventChannel.EventSink? = null
+    private var eventChannel: EventChannel? = null
 
     /**
      * Signals whether the LocationUpdatesService is bound
@@ -74,6 +78,8 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
         isAttached = true
         channel = MethodChannel(messenger, METHOD_CHANNEL_NAME)
         channel.setMethodCallHandler(this)
+        eventChannel = EventChannel(messenger, EVENT_CHANNEL_NAME)
+        eventChannel?.setStreamHandler(this)
 
         receiver = MyReceiver()
 
@@ -101,9 +107,15 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
         }
     }
 
+    fun locationServiceisRunning(): Boolean {
+        return LocationUpdatesService.isRunning(context!!)
+    }
+
     private fun startLocationService(distanceFilter: Double?, forceLocationManager : Boolean?): Int{
         LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
                 IntentFilter(LocationUpdatesService.ACTION_BROADCAST))
+        LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
+            IntentFilter(LocationUpdatesService.ACTION_IS_RUNNING))
         if (!bound) {
             val intent = Intent(context, LocationUpdatesService::class.java)
             intent.putExtra("distance_filter", distanceFilter)
@@ -153,8 +165,18 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
             "start_location_service" -> result.success(startLocationService(call.argument("distance_filter"), call.argument("force_location_manager")))
             "set_android_notification" -> result.success(setAndroidNotification(call.argument("title"),call.argument("message"),call.argument("icon")))
             "set_configuration" -> result.success(setConfiguration(call.argument<String>("interval")?.toLongOrNull()))
+            "location_service_is_running" -> result.success(locationServiceisRunning())
             else -> result.notImplemented()
         }
+    }
+
+    override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
+        eventSink = sink
+    }
+
+    override fun onCancel(arguments: Any?) {
+        eventSink = null
+        eventChannel = null
     }
 
     /**
@@ -201,6 +223,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
 
     private inner class MyReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != LocationUpdatesService.ACTION_BROADCAST) return
             val location = intent.getParcelableExtra<Location>(LocationUpdatesService.EXTRA_LOCATION)
             if (location != null) {
                 val locationMap = HashMap<String, Any>()
@@ -213,6 +236,8 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
                 locationMap["time"] = location.time.toDouble()
                 locationMap["is_mock"] = location.isFromMockProvider
                 channel.invokeMethod("location", locationMap, null)
+
+                eventSink?.success(locationMap)
             }
         }
     }
@@ -221,8 +246,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
      * Handle the response from a permission request
      * @return true if the result has been handled.
      */
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean {
-        Log.i(BackgroundLocationPlugin.TAG, "onRequestPermissionResult")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray): Boolean {    Log.i(BackgroundLocationPlugin.TAG, "onRequestPermissionResult")
         if (requestCode == REQUEST_PERMISSIONS_REQUEST_CODE) {
             when {
                 grantResults!!.isEmpty() -> Log.i(BackgroundLocationPlugin.TAG, "User interaction was cancelled.")
