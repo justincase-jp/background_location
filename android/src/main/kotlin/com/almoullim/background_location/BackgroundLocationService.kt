@@ -65,7 +65,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
             bound = true
             val binder = service as LocationUpdatesService.LocalBinder
             this@BackgroundLocationService.service = binder.service
-            requestLocation()
+           //requestLocation()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
