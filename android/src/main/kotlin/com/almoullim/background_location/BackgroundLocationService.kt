@@ -65,7 +65,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
             bound = true
             val binder = service as LocationUpdatesService.LocalBinder
             this@BackgroundLocationService.service = binder.service
-           //requestLocation()
+            requestLocation()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -114,7 +114,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
     private fun startLocationService(distanceFilter: Double?, forceLocationManager : Boolean?): Int{
         LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
                 IntentFilter(LocationUpdatesService.ACTION_BROADCAST))
-        LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
+       LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
             IntentFilter(LocationUpdatesService.ACTION_IS_RUNNING))
         if (!bound) {
             val intent = Intent(context, LocationUpdatesService::class.java)
@@ -184,9 +184,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
      * If permission is denied, it requests the needed permission
      */
     private fun requestLocation() {
-        if (!checkPermissions()) {
-            requestPermissions()
-        } else {
+        if (checkPermissions()) {
             service?.requestLocationUpdates()
         }
     }
@@ -223,7 +221,6 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
 
     private inner class MyReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != LocationUpdatesService.ACTION_BROADCAST) return
             val location = intent.getParcelableExtra<Location>(LocationUpdatesService.EXTRA_LOCATION)
             if (location != null) {
                 val locationMap = HashMap<String, Any>()
