@@ -11,54 +11,46 @@ class BackgroundLocation {
   // This channel is also refrenced inside both iOS and Abdroid classes
   static const MethodChannel _channel =
       MethodChannel('com.almoullim.background_location/methods');
-  static const EventChannel _eventChannel =
-      EventChannel('com.almoullim.background_location/events');
 
   /// Stop receiving location updates
-  static Future<void> stopLocationService() {
-    return _channel.invokeMethod('stop_location_service');
+  static Future<dynamic> stopLocationService() async {
+    return await _channel.invokeMethod('stop_location_service');
+  }
+
+  /// Check if the location update service is running
+  static Future<bool> isServiceRunning() async {
+    var result = await _channel.invokeMethod('is_service_running');
+    return result == true;
   }
 
   /// Start receiving location updated
-  static Future<void> startLocationService(
-      {double distanceFilter = 0.0, bool forceAndroidLocationManager = false}) {
-    return _channel.invokeMethod('start_location_service', <String, dynamic>{
-      'distance_filter': distanceFilter,
-      'force_location_manager': forceAndroidLocationManager
-    });
+  static Future<dynamic> startLocationService({double distanceFilter = 0.0, bool forceAndroidLocationManager = false}) async {
+    return await _channel.invokeMethod('start_location_service',
+        <String, dynamic>{'distance_filter': distanceFilter, 'force_location_manager': forceAndroidLocationManager});
   }
 
-  static Future<void> setAndroidNotification(
+  static Future<dynamic> setAndroidNotification(
       {String? title, String? message, String? icon}) async {
     if (Platform.isAndroid) {
-      return _channel.invokeMethod('set_android_notification',
+      return await _channel.invokeMethod('set_android_notification',
           <String, dynamic>{'title': title, 'message': message, 'icon': icon});
-    } else {
-      //return Promise.resolve();
     }
   }
 
-  static Future<void> setAndroidConfiguration(int interval) async {
+  static Future<dynamic> setAndroidConfiguration(int interval) async {
     if (Platform.isAndroid) {
-      return _channel.invokeMethod('set_configuration', <String, dynamic>{
+      return await _channel.invokeMethod('set_configuration', <String, dynamic>{
         'interval': interval.toString(),
       });
-    } else {
-      //return Promise.resolve();
     }
-  }
-
-  static Future<bool> locationServiceIsRunning() async {
-    return _channel.invokeMethod<bool?>('location_service_is_running',
-        {}).then<bool>((bool? value) => value ?? false);
   }
 
   /// Get the current location once.
-  Future<Location> getCurrentLocation() {
+  Future<Location> getCurrentLocation() async {
     var completer = Completer<Location>();
 
     getLocationUpdates((location) {
-      final _location = Location(
+      var loc = Location(
         latitude: location.latitude,
         longitude: location.longitude,
         accuracy: location.accuracy,
@@ -66,13 +58,15 @@ class BackgroundLocation {
         bearing: location.bearing,
         speed: location.speed,
         time: location.time,
-        isMock: false,
+        isMock: location.isMock,
       );
-      completer.complete(_location);
+      completer.complete(loc);
     });
 
     return completer.future;
   }
+
+
 
   /// Register a function to recive location updates as long as the location
   /// service has started
@@ -95,24 +89,6 @@ class BackgroundLocation {
         );
       }
     });
-  }
-
-  Stream<Location>? _locationChangedListener;
-  Stream<Location> get onLocationChanged {
-    _locationChangedListener ??=
-        _eventChannel.receiveBroadcastStream().map((dynamic event) {
-      var locationData = Map.from(event);
-      return Location(
-          latitude: locationData['latitude'],
-          longitude: locationData['longitude'],
-          altitude: locationData['altitude'],
-          accuracy: locationData['accuracy'],
-          bearing: locationData['bearing'],
-          speed: locationData['speed'],
-          time: locationData['time'],
-          isMock: locationData['is_mock']);
-    });
-    return _locationChangedListener!;
   }
 }
 
@@ -137,7 +113,7 @@ class Location {
       @required this.time,
       @required this.isMock});
 
-  toMap() {
+  Map<String, dynamic> toMap() {
     var obj = {
       'latitude': latitude,
       'longitude': longitude,

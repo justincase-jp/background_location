@@ -54,7 +54,6 @@ class LocationUpdatesService : Service() {
         private val TAG = LocationUpdatesService::class.java.simpleName
         private const val CHANNEL_ID = "channel_01"
         internal const val ACTION_BROADCAST = "$PACKAGE_NAME.broadcast"
-        internal const val ACTION_IS_RUNNING = "$PACKAGE_NAME.action_is_running"
         internal const val EXTRA_LOCATION = "$PACKAGE_NAME.location"
         private const val EXTRA_STARTED_FROM_NOTIFICATION = "$PACKAGE_NAME.started_from_notification"
         var UPDATE_INTERVAL_IN_MILLISECONDS: Long = 1000
@@ -63,9 +62,6 @@ class LocationUpdatesService : Service() {
         private lateinit var broadcastReceiver: BroadcastReceiver
 
         private const val STOP_SERVICE = "stop_service"
-
-        fun isRunning(context: Context) =
-            LocalBroadcastManager.getInstance(context).sendBroadcast(Intent(ACTION_IS_RUNNING))
     }
 
 
@@ -114,10 +110,14 @@ class LocationUpdatesService : Service() {
             mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
             
             mFusedLocationCallback = object : LocationCallback() {
-                override fun onLocationResult(result: LocationResult) {
-                    super.onLocationResult(result)
-                    val location = result.lastLocation ?: return
-                    onNewLocation(location)
+                override fun onLocationResult(locationResult: LocationResult) {
+                    // Smart cast to 'Location' is impossible, because 'locationResult.lastLocation'
+                    // is a property that has open or custom getter
+                    val newLastLocation = locationResult.lastLocation
+                    if (newLastLocation is Location) {
+                        super.onLocationResult(locationResult)
+                        onNewLocation(newLastLocation)
+                    }
                 }
             }
         } else {
@@ -138,7 +138,7 @@ class LocationUpdatesService : Service() {
         mNotificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "Application Name"
-            val mChannel = NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_LOW)
+            val mChannel = NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_DEFAULT)
             mChannel.setSound(null, null)
             mNotificationManager!!.createNotificationChannel(mChannel)
         }
@@ -167,7 +167,7 @@ class LocationUpdatesService : Service() {
     fun requestLocationUpdates() {
         Utils.setRequestingLocationUpdates(this, true)
         try {
-            if (isGoogleApiAvailable && !this.forceLocationManager && mLocationRequest != null) {
+            if (isGoogleApiAvailable && !this.forceLocationManager) {
                 mFusedLocationClient!!.requestLocationUpdates(mLocationRequest!!,
                     mFusedLocationCallback!!, Looper.myLooper())
             } else {
@@ -209,7 +209,7 @@ class LocationUpdatesService : Service() {
                             }
                         }
             } else {
-                mLocation = mLocationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                mLocation = mLocationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
             }
         } catch (unlikely: SecurityException) {
         }
@@ -244,9 +244,9 @@ class LocationUpdatesService : Service() {
         unregisterReceiver(broadcastReceiver)
         try {
             if (isGoogleApiAvailable && !this.forceLocationManager) {
-                mFusedLocationClient?.removeLocationUpdates(mFusedLocationCallback!!)
+                mFusedLocationClient!!.removeLocationUpdates(mFusedLocationCallback!!)
             } else {
-                mLocationManager?.removeUpdates(mLocationManagerCallback!!)
+                mLocationManager!!.removeUpdates(mLocationManagerCallback!!)
             }
 
             Utils.setRequestingLocationUpdates(this, false)

@@ -5,6 +5,7 @@ import io.flutter.plugin.common.MethodChannel
 
 import io.flutter.plugin.common.BinaryMessenger
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.*
 import android.content.pm.PackageManager
 import android.location.Location
@@ -19,13 +20,11 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.PluginRegistry
-import io.flutter.plugin.common.EventChannel
 
-class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry.RequestPermissionsResultListener, EventChannel.StreamHandler {
+
+class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry.RequestPermissionsResultListener {
     companion object {
         const val METHOD_CHANNEL_NAME = "${BackgroundLocationPlugin.PLUGIN_ID}/methods"
-        const val EVENT_CHANNEL_NAME  = "${BackgroundLocationPlugin.PLUGIN_ID}/events"
-
         private const val REQUEST_PERMISSIONS_REQUEST_CODE = 34
 
         private var instance: BackgroundLocationService? = null
@@ -53,8 +52,6 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
     private var isAttached = false
     private var receiver: MyReceiver? = null
     private var service: LocationUpdatesService? = null
-    private var eventSink: EventChannel.EventSink? = null
-    private var eventChannel: EventChannel? = null
 
     /**
      * Signals whether the LocationUpdatesService is bound
@@ -66,7 +63,7 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
             bound = true
             val binder = service as LocationUpdatesService.LocalBinder
             this@BackgroundLocationService.service = binder.service
-            requestLocation()
+            //requestLocation()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -79,8 +76,6 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
         isAttached = true
         channel = MethodChannel(messenger, METHOD_CHANNEL_NAME)
         channel.setMethodCallHandler(this)
-        eventChannel = EventChannel(messenger, EVENT_CHANNEL_NAME)
-        eventChannel?.setStreamHandler(this)
 
         receiver = MyReceiver()
 
@@ -108,15 +103,9 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
         }
     }
 
-    fun locationServiceisRunning(): Boolean {
-        return LocationUpdatesService.isRunning(context!!)
-    }
-
     private fun startLocationService(distanceFilter: Double?, forceLocationManager : Boolean?): Int{
         LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
                 IntentFilter(LocationUpdatesService.ACTION_BROADCAST))
-       LocalBroadcastManager.getInstance(context!!).registerReceiver(receiver!!,
-            IntentFilter(LocationUpdatesService.ACTION_IS_RUNNING))
         if (!bound) {
             val intent = Intent(context, LocationUpdatesService::class.java)
             intent.putExtra("distance_filter", distanceFilter)
@@ -125,6 +114,19 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
         }
 
         return 0
+    }
+
+    private fun isLocationServiceRunning(): Boolean {
+        val manager: ActivityManager = context!!.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (LocationUpdatesService::class.java.getName() == service.service.getClassName()) {
+                if (service.foreground)
+                    return true
+                else
+                    return false
+            }
+        }
+        return false
     }
 
     private fun stopLocationService(): Int {
@@ -164,20 +166,11 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
         when (call.method) {
             "stop_location_service" -> result.success(stopLocationService())
             "start_location_service" -> result.success(startLocationService(call.argument("distance_filter"), call.argument("force_location_manager")))
+            "is_service_running" -> result.success(isLocationServiceRunning())
             "set_android_notification" -> result.success(setAndroidNotification(call.argument("title"),call.argument("message"),call.argument("icon")))
             "set_configuration" -> result.success(setConfiguration(call.argument<String>("interval")?.toLongOrNull()))
-            "location_service_is_running" -> result.success(locationServiceisRunning())
             else -> result.notImplemented()
         }
-    }
-
-    override fun onListen(arguments: Any?, sink: EventChannel.EventSink?) {
-        eventSink = sink
-    }
-
-    override fun onCancel(arguments: Any?) {
-        eventSink = null
-        eventChannel = null
     }
 
     /**
@@ -234,8 +227,6 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
                 locationMap["time"] = location.time.toDouble()
                 locationMap["is_mock"] = location.isFromMockProvider
                 channel.invokeMethod("location", locationMap, null)
-
-                eventSink?.success(locationMap)
             }
         }
     }
@@ -244,7 +235,8 @@ class BackgroundLocationService: MethodChannel.MethodCallHandler, PluginRegistry
      * Handle the response from a permission request
      * @return true if the result has been handled.
      */
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray): Boolean {    Log.i(BackgroundLocationPlugin.TAG, "onRequestPermissionResult")
+override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean{
+        Log.i(BackgroundLocationPlugin.TAG, "onRequestPermissionResult")
         if (requestCode == REQUEST_PERMISSIONS_REQUEST_CODE) {
             when {
                 grantResults!!.isEmpty() -> Log.i(BackgroundLocationPlugin.TAG, "User interaction was cancelled.")
