@@ -8,9 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/main.dart';
-
-
+import 'package:background_location_example/main.dart';
 
 void main() {
   testWidgets('Verify Platform version', (WidgetTester tester) async {
@@ -21,7 +19,7 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
-            widget is Text && widget.data!.startsWith('Running on:'),
+            widget is Text && widget.data!.startsWith('IsServiceRunning:'),
       ),
       findsOneWidget,
     );
